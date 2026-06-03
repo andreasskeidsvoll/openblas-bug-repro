@@ -15,6 +15,7 @@ jobs:
 
       - name: Show machine info
         run: |
+          set -eux
           uname -a
           uname -m
           lscpu
@@ -110,18 +111,65 @@ jobs:
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u || true
 
-      - name: Run default tests
+      - name: Run expected failing case and controls
         run: |
-          set -eux
+          set +e
 
+          echo "=== failing case: OMP_NUM_THREADS=8, no mutex ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 1
-          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp_arm64 0
+          status_fail=$?
 
-      - name: Run longer stress tests
+          echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1 ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 1
+          status_mutex=$?
+
+          echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex ==="
+          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp_arm64 0
+          status_single=$?
+
+          echo "statuses: fail=$status_fail mutex=$status_mutex single=$status_single"
+
+          if [ "$status_fail" -eq 0 ]; then
+            echo "Expected the threaded no-mutex case to fail, but it passed."
+            exit 1
+          fi
+
+          if [ "$status_mutex" -ne 0 ]; then
+            echo "Mutex control failed."
+            exit 1
+          fi
+
+          if [ "$status_single" -ne 0 ]; then
+            echo "Single-thread control failed."
+            exit 1
+          fi
+
+          echo "Observed expected pattern: threaded no-mutex fails; mutex and single-thread controls pass."
+
+      - name: Run threshold controls
         run: |
           set -eux
 
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 128 5000
+          echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32 ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 31 32 64 64 128 500
+
+          echo "=== DGEMM below threshold control: K=127 ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 64 127 500
+
+      - name: Run additional diagnostic pair
+        run: |
+          set +e
+
+          echo "=== larger-size threaded no-mutex diagnostic ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 64 64 128 128 128 1000
-          OMP_NUM_THREADS=2 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 128 5000
+          status_large=$?
+
+          echo "larger-size status: $status_large"
+
+          if [ "$status_large" -eq 0 ]; then
+            echo "Larger-size diagnostic passed. This is not fatal because the minimal failing case already reproduced."
+          else
+            echo "Larger-size diagnostic also failed."
+          fi
+
+          exit 0
