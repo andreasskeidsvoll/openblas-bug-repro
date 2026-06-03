@@ -18,13 +18,11 @@ jobs:
             runner: ubuntu-24.04-arm
             miniforge_arch: Linux-aarch64
             target_args: TARGET=ARMV8
-            expect_fail: "1"
 
           - name: linux-x86_64
             runner: ubuntu-24.04
             miniforge_arch: Linux-x86_64
             target_args: ""
-            expect_fail: "0"
 
     steps:
       - name: Check out repository
@@ -128,67 +126,27 @@ jobs:
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u || true
 
-      - name: Run controls and threaded stress attempts
+      - name: Run positive controls
         run: |
-          set +e
-
-          EXPECT_FAIL="${{ matrix.expect_fail }}"
+          set -eux
 
           echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1, calls=1000 ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1 32 32 64 64 128 1000
-          status_mutex=$?
 
           echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex, calls=1000 ==="
           OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
-          status_single=$?
-
-          if [ "$status_mutex" -ne 0 ]; then
-            echo "Mutex control failed."
-            exit 1
-          fi
-
-          if [ "$status_single" -ne 0 ]; then
-            echo "Single-thread control failed."
-            exit 1
-          fi
-
-          echo "=== threaded no-mutex stress attempts: 10 x calls=1000 ==="
-          fail_seen=0
-
-          for i in $(seq 1 10); do
-            echo "=== attempt $i: default geometry, calls=1000 ==="
-            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
-            status=$?
-
-            if [ "$status" -ne 0 ]; then
-              echo "Observed failure on attempt $i."
-              fail_seen=1
-              break
-            fi
-          done
-
-          echo "fail_seen=$fail_seen expected_fail=$EXPECT_FAIL"
-
-          if [ "$EXPECT_FAIL" = "1" ]; then
-            if [ "$fail_seen" -eq 0 ]; then
-              echo "Expected at least one threaded no-mutex failure on ARM64, but all attempts passed."
-              exit 1
-            fi
-            echo "Observed expected ARM64 pattern: threaded no-mutex can fail; mutex and single-thread controls pass."
-          else
-            if [ "$fail_seen" -ne 0 ]; then
-              echo "Unexpected threaded no-mutex failure on x86_64."
-              exit 1
-            fi
-            echo "Observed expected x86_64 pattern: threaded no-mutex and controls pass."
-          fi
-
-      - name: Run threshold controls
-        run: |
-          set -eux
 
           echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32, calls=1000 ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 31 32 64 64 128 1000
 
           echo "=== DGEMM below threshold control: K=127, calls=1000 ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 1000
+
+      - name: Run threaded no-mutex stress test
+        run: |
+          set -eux
+
+          for i in $(seq 1 10); do
+            echo "=== attempt $i: default geometry, calls=1000 ==="
+            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
+          done
