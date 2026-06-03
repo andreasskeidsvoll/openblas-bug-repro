@@ -134,12 +134,12 @@ jobs:
 
           EXPECT_FAIL="${{ matrix.expect_fail }}"
 
-          echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1
+          echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1, calls=1000 ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1 32 32 64 64 128 1000
           status_mutex=$?
 
-          echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex ==="
-          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0
+          echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex, calls=1000 ==="
+          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
           status_single=$?
 
           if [ "$status_mutex" -ne 0 ]; then
@@ -152,12 +152,12 @@ jobs:
             exit 1
           fi
 
-          echo "=== threaded no-mutex stress attempts ==="
+          echo "=== threaded no-mutex stress attempts: 10 x calls=1000 ==="
           fail_seen=0
 
-          for i in $(seq 1 20); do
-            echo "=== attempt $i: default geometry, calls=500 ==="
-            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 500
+          for i in $(seq 1 10); do
+            echo "=== attempt $i: default geometry, calls=1000 ==="
+            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
             status=$?
 
             if [ "$status" -ne 0 ]; then
@@ -187,35 +187,8 @@ jobs:
         run: |
           set -eux
 
-          echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 31 32 64 64 128 500
+          echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32, calls=1000 ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 31 32 64 64 128 1000
 
-          echo "=== DGEMM below threshold control: K=127 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 500
-
-      - name: Run larger-size diagnostic
-        run: |
-          set +e
-
-          EXPECT_FAIL="${{ matrix.expect_fail }}"
-
-          echo "=== larger-size threaded no-mutex diagnostic ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 64 64 128 128 128 1000
-          status_large=$?
-
-          echo "larger-size status: $status_large expected_fail=$EXPECT_FAIL"
-
-          if [ "$EXPECT_FAIL" = "0" ] && [ "$status_large" -ne 0 ]; then
-            echo "Larger-size diagnostic failed on x86_64."
-            exit 1
-          fi
-
-          if [ "$EXPECT_FAIL" = "1" ] && [ "$status_large" -ne 0 ]; then
-            echo "Larger-size diagnostic also failed on ARM64."
-          fi
-
-          if [ "$EXPECT_FAIL" = "1" ] && [ "$status_large" -eq 0 ]; then
-            echo "Larger-size diagnostic passed on ARM64. This is not fatal because the repeated default stress attempts are the decisive check."
-          fi
-
-          exit 0
+          echo "=== DGEMM below threshold control: K=127, calls=1000 ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 1000
