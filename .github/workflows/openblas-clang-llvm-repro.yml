@@ -48,7 +48,6 @@ jobs:
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
           conda config --set always_yes yes
           conda config --set channel_priority strict
-          conda update -n base -c conda-forge conda
 
       - name: Create clang/LLVM OpenMP environment
         run: |
@@ -142,7 +141,7 @@ jobs:
           echo "=== DGEMM below threshold control: K=127, calls=1000 ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 1000
 
-      - name: Run threaded no-mutex stress test
+      - name: Run threaded no-mutex correctness stress test
         run: |
           set -eux
 
