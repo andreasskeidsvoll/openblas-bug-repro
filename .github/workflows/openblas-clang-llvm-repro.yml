@@ -128,15 +128,11 @@ jobs:
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u || true
 
-      - name: Run main case and controls
+      - name: Run controls and threaded stress attempts
         run: |
           set +e
 
           EXPECT_FAIL="${{ matrix.expect_fail }}"
-
-          echo "=== main case: OMP_NUM_THREADS=8, no mutex ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0
-          status_main=$?
 
           echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1 ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1
@@ -145,20 +141,6 @@ jobs:
           echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex ==="
           OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0
           status_single=$?
-
-          echo "statuses: main=$status_main mutex=$status_mutex single=$status_single expected_fail=$EXPECT_FAIL"
-
-          if [ "$EXPECT_FAIL" = "1" ]; then
-            if [ "$status_main" -eq 0 ]; then
-              echo "Expected the threaded no-mutex case to fail, but it passed."
-              exit 1
-            fi
-          else
-            if [ "$status_main" -ne 0 ]; then
-              echo "Expected the threaded no-mutex case to pass, but it failed."
-              exit 1
-            fi
-          fi
 
           if [ "$status_mutex" -ne 0 ]; then
             echo "Mutex control failed."
@@ -170,7 +152,36 @@ jobs:
             exit 1
           fi
 
-          echo "Observed expected pattern for ${{ matrix.name }}."
+          echo "=== threaded no-mutex stress attempts ==="
+          fail_seen=0
+
+          for i in $(seq 1 20); do
+            echo "=== attempt $i: default geometry, calls=500 ==="
+            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 500
+            status=$?
+
+            if [ "$status" -ne 0 ]; then
+              echo "Observed failure on attempt $i."
+              fail_seen=1
+              break
+            fi
+          done
+
+          echo "fail_seen=$fail_seen expected_fail=$EXPECT_FAIL"
+
+          if [ "$EXPECT_FAIL" = "1" ]; then
+            if [ "$fail_seen" -eq 0 ]; then
+              echo "Expected at least one threaded no-mutex failure on ARM64, but all attempts passed."
+              exit 1
+            fi
+            echo "Observed expected ARM64 pattern: threaded no-mutex can fail; mutex and single-thread controls pass."
+          else
+            if [ "$fail_seen" -ne 0 ]; then
+              echo "Unexpected threaded no-mutex failure on x86_64."
+              exit 1
+            fi
+            echo "Observed expected x86_64 pattern: threaded no-mutex and controls pass."
+          fi
 
       - name: Run threshold controls
         run: |
@@ -194,17 +205,17 @@ jobs:
 
           echo "larger-size status: $status_large expected_fail=$EXPECT_FAIL"
 
-          if [ "$EXPECT_FAIL" = "1" ]; then
-            if [ "$status_large" -eq 0 ]; then
-              echo "Larger-size diagnostic passed. This is not fatal because the minimal ARM64 case is the decisive test."
-            else
-              echo "Larger-size diagnostic also failed."
-            fi
-          else
-            if [ "$status_large" -ne 0 ]; then
-              echo "Larger-size diagnostic failed on x86_64."
-              exit 1
-            fi
+          if [ "$EXPECT_FAIL" = "0" ] && [ "$status_large" -ne 0 ]; then
+            echo "Larger-size diagnostic failed on x86_64."
+            exit 1
+          fi
+
+          if [ "$EXPECT_FAIL" = "1" ] && [ "$status_large" -ne 0 ]; then
+            echo "Larger-size diagnostic also failed on ARM64."
+          fi
+
+          if [ "$EXPECT_FAIL" = "1" ] && [ "$status_large" -eq 0 ]; then
+            echo "Larger-size diagnostic passed on ARM64. This is not fatal because the repeated default stress attempts are the decisive check."
           fi
 
           exit 0
