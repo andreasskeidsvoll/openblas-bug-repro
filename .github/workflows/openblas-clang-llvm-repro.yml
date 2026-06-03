@@ -1,4 +1,4 @@
-name: OpenBLAS ARM64 repro
+name: OpenBLAS clang/LLVM OpenMP repro
 
 on:
   workflow_dispatch:
@@ -6,8 +6,25 @@ on:
     branches: [ main ]
 
 jobs:
-  clang-llvm-openmp-arm64:
-    runs-on: ubuntu-24.04-arm
+  clang-llvm-openmp:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            target_args: TARGET=ARMV8
+            expect_fail: "1"
+
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+            miniforge_arch: Linux-x86_64
+            target_args: ""
+            expect_fail: "0"
 
     steps:
       - name: Check out repository
@@ -21,12 +38,12 @@ jobs:
           lscpu
           nproc
 
-      - name: Install Miniforge for Linux aarch64
+      - name: Install Miniforge
         run: |
           set -eux
 
           curl -L -o miniforge.sh \
-            https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh
+            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${{ matrix.miniforge_arch }}.sh"
 
           bash miniforge.sh -b -p "$HOME/miniforge3"
 
@@ -41,10 +58,10 @@ jobs:
 
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
 
-          conda create -n oblas-linux-arm-clang -c conda-forge \
+          conda create -n oblas-clang -c conda-forge \
             git make clang clangxx llvm-openmp binutils
 
-          conda activate oblas-linux-arm-clang
+          conda activate oblas-clang
 
           which clang
           which clang++
@@ -58,21 +75,21 @@ jobs:
           set -eux
 
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-linux-arm-clang
+          conda activate oblas-clang
 
           git clone --branch v0.3.33 --depth 1 \
-            https://github.com/OpenMathLib/OpenBLAS.git OpenBLAS-0.3.33-clang-arm64
+            https://github.com/OpenMathLib/OpenBLAS.git OpenBLAS-0.3.33-clang
 
-          cd OpenBLAS-0.3.33-clang-arm64
+          cd OpenBLAS-0.3.33-clang
 
           make -j"$(nproc)" \
             CC="$CONDA_PREFIX/bin/clang" \
             USE_OPENMP=1 \
             NO_AFFINITY=1 \
-            TARGET=ARMV8 \
             NUM_THREADS=128 \
             NO_LAPACK=1 \
-            NOFORTRAN=1
+            NOFORTRAN=1 \
+            ${{ matrix.target_args }}
 
           make PREFIX="$PWD/install-openmp-clang-clean" install
 
@@ -87,9 +104,9 @@ jobs:
           set -eux
 
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-linux-arm-clang
+          conda activate oblas-clang
 
-          LIB_CLANG_CLEAN="$GITHUB_WORKSPACE/OpenBLAS-0.3.33-clang-arm64/install-openmp-clang-clean/lib/libopenblas.a"
+          LIB_CLANG_CLEAN="$GITHUB_WORKSPACE/OpenBLAS-0.3.33-clang/install-openmp-clang-clean/lib/libopenblas.a"
 
           clang -O2 -Wall -Wextra \
             "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
@@ -97,41 +114,50 @@ jobs:
             -L"$CONDA_PREFIX/lib" \
             -Wl,-rpath,"$CONDA_PREFIX/lib" \
             -lomp -lpthread -lm -ldl \
-            -o repro_clang_llvm_omp_arm64
+            -o repro_clang_llvm_omp
 
       - name: Check linkage and symbols
         run: |
           set -eux
 
           echo "=== ldd ==="
-          ldd ./repro_clang_llvm_omp_arm64 || true
+          ldd ./repro_clang_llvm_omp || true
 
           echo "=== OpenMP-related undefined symbols in final executable ==="
-          nm -u ./repro_clang_llvm_omp_arm64 \
+          nm -u ./repro_clang_llvm_omp \
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u || true
 
-      - name: Run expected failing case and controls
+      - name: Run main case and controls
         run: |
           set +e
 
-          echo "=== failing case: OMP_NUM_THREADS=8, no mutex ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0
-          status_fail=$?
+          EXPECT_FAIL="${{ matrix.expect_fail }}"
+
+          echo "=== main case: OMP_NUM_THREADS=8, no mutex ==="
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0
+          status_main=$?
 
           echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 1
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1
           status_mutex=$?
 
           echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex ==="
-          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp_arm64 0
+          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0
           status_single=$?
 
-          echo "statuses: fail=$status_fail mutex=$status_mutex single=$status_single"
+          echo "statuses: main=$status_main mutex=$status_mutex single=$status_single expected_fail=$EXPECT_FAIL"
 
-          if [ "$status_fail" -eq 0 ]; then
-            echo "Expected the threaded no-mutex case to fail, but it passed."
-            exit 1
+          if [ "$EXPECT_FAIL" = "1" ]; then
+            if [ "$status_main" -eq 0 ]; then
+              echo "Expected the threaded no-mutex case to fail, but it passed."
+              exit 1
+            fi
+          else
+            if [ "$status_main" -ne 0 ]; then
+              echo "Expected the threaded no-mutex case to pass, but it failed."
+              exit 1
+            fi
           fi
 
           if [ "$status_mutex" -ne 0 ]; then
@@ -144,32 +170,41 @@ jobs:
             exit 1
           fi
 
-          echo "Observed expected pattern: threaded no-mutex fails; mutex and single-thread controls pass."
+          echo "Observed expected pattern for ${{ matrix.name }}."
 
       - name: Run threshold controls
         run: |
           set -eux
 
           echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 31 32 64 64 128 500
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 31 32 64 64 128 500
 
           echo "=== DGEMM below threshold control: K=127 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 127 500
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 500
 
-      - name: Run additional diagnostic pair
+      - name: Run larger-size diagnostic
         run: |
           set +e
 
+          EXPECT_FAIL="${{ matrix.expect_fail }}"
+
           echo "=== larger-size threaded no-mutex diagnostic ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 64 64 128 128 128 1000
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 64 64 128 128 128 1000
           status_large=$?
 
-          echo "larger-size status: $status_large"
+          echo "larger-size status: $status_large expected_fail=$EXPECT_FAIL"
 
-          if [ "$status_large" -eq 0 ]; then
-            echo "Larger-size diagnostic passed. This is not fatal because the minimal failing case already reproduced."
+          if [ "$EXPECT_FAIL" = "1" ]; then
+            if [ "$status_large" -eq 0 ]; then
+              echo "Larger-size diagnostic passed. This is not fatal because the minimal ARM64 case is the decisive test."
+            else
+              echo "Larger-size diagnostic also failed."
+            fi
           else
-            echo "Larger-size diagnostic also failed."
+            if [ "$status_large" -ne 0 ]; then
+              echo "Larger-size diagnostic failed on x86_64."
+              exit 1
+            fi
           fi
 
           exit 0
