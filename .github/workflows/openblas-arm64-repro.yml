@@ -154,7 +154,7 @@ jobs:
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 31 32 64 64 128 500
 
           echo "=== DGEMM below threshold control: K=127 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 64 127 500
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 127 500
 
       - name: Run additional diagnostic pair
         run: |
