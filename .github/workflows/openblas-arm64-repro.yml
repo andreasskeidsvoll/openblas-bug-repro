@@ -1,0 +1,127 @@
+name: OpenBLAS ARM64 repro
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  clang-llvm-openmp-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show machine info
+        run: |
+          uname -a
+          uname -m
+          lscpu
+          nproc
+
+      - name: Install Miniforge for Linux aarch64
+        run: |
+          set -eux
+
+          curl -L -o miniforge.sh \
+            https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh
+
+          bash miniforge.sh -b -p "$HOME/miniforge3"
+
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda config --set always_yes yes
+          conda config --set channel_priority strict
+          conda update -n base -c conda-forge conda
+
+      - name: Create clang/LLVM OpenMP environment
+        run: |
+          set -eux
+
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+
+          conda create -n oblas-linux-arm-clang -c conda-forge \
+            git make clang clangxx llvm-openmp binutils
+
+          conda activate oblas-linux-arm-clang
+
+          which clang
+          which clang++
+          clang --version
+          clang++ --version
+
+          conda list | grep -E 'llvm-openmp|openmp|clang|binutils' || true
+
+      - name: Build clean OpenBLAS with clang/LLVM OpenMP
+        run: |
+          set -eux
+
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate oblas-linux-arm-clang
+
+          git clone --branch v0.3.33 --depth 1 \
+            https://github.com/OpenMathLib/OpenBLAS.git OpenBLAS-0.3.33-clang-arm64
+
+          cd OpenBLAS-0.3.33-clang-arm64
+
+          make -j"$(nproc)" \
+            CC="$CONDA_PREFIX/bin/clang" \
+            USE_OPENMP=1 \
+            NO_AFFINITY=1 \
+            TARGET=ARMV8 \
+            NUM_THREADS=128 \
+            NO_LAPACK=1 \
+            NOFORTRAN=1
+
+          make PREFIX="$PWD/install-openmp-clang-clean" install
+
+          echo "=== OpenMP symbols in OpenBLAS archive ==="
+          nm -u "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+            | grep -E 'GOMP|__kmpc|omp_' \
+            | sort -u \
+            | head -100 || true
+
+      - name: Compile reproducer
+        run: |
+          set -eux
+
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate oblas-linux-arm-clang
+
+          LIB_CLANG_CLEAN="$GITHUB_WORKSPACE/OpenBLAS-0.3.33-clang-arm64/install-openmp-clang-clean/lib/libopenblas.a"
+
+          clang -O2 -Wall -Wextra \
+            "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
+            "$LIB_CLANG_CLEAN" \
+            -L"$CONDA_PREFIX/lib" \
+            -Wl,-rpath,"$CONDA_PREFIX/lib" \
+            -lomp -lpthread -lm -ldl \
+            -o repro_clang_llvm_omp_arm64
+
+      - name: Check linkage and symbols
+        run: |
+          set -eux
+
+          echo "=== ldd ==="
+          ldd ./repro_clang_llvm_omp_arm64 || true
+
+          echo "=== OpenMP-related undefined symbols in final executable ==="
+          nm -u ./repro_clang_llvm_omp_arm64 \
+            | grep -E 'GOMP|__kmpc|omp_' \
+            | sort -u || true
+
+      - name: Run default tests
+        run: |
+          set -eux
+
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 1
+          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp_arm64 0
+
+      - name: Run longer stress tests
+        run: |
+          set -eux
+
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 128 5000
+          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp_arm64 0 64 64 128 128 128 1000
+          OMP_NUM_THREADS=2 ./repro_clang_llvm_omp_arm64 0 32 32 64 64 128 5000
