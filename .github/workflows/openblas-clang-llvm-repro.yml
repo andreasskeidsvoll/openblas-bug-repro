@@ -2,6 +2,8 @@ name: OpenBLAS clang/LLVM OpenMP sweeps
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   arm64-llvm-openmp-sweep:
