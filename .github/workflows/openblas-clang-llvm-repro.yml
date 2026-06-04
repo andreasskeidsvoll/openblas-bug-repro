@@ -1,4 +1,4 @@
-name: OpenBLAS ARM64 late candidate ref sweep
+name: OpenBLAS clang/LLVM OpenMP targeted sweeps
 
 on:
   workflow_dispatch:
@@ -6,61 +6,108 @@ on:
     branches: [ main ]
 
 jobs:
-  arm64-openblas-late-candidate-ref-sweep:
-    name: arm64-openblas-${{ matrix.label }}
-    runs-on: ubuntu-24.04-arm
+  targeted-sweep:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: v0.3.30
+          # ARM64 LLVM/libomp sweep, OpenBLAS fixed at v0.3.33
+          - label: arm64-llvm-18-openblas-v0.3.33
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "18"
+            openblas_ref: v0.3.33
+            target_args: TARGET=ARMV8
+
+          - label: arm64-llvm-19-openblas-v0.3.33
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "19"
+            openblas_ref: v0.3.33
+            target_args: TARGET=ARMV8
+
+          - label: arm64-llvm-20-openblas-v0.3.33
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "20"
+            openblas_ref: v0.3.33
+            target_args: TARGET=ARMV8
+
+          - label: arm64-llvm-21-openblas-v0.3.33
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "21"
+            openblas_ref: v0.3.33
+            target_args: TARGET=ARMV8
+
+          - label: arm64-llvm-22-openblas-v0.3.33
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
+            openblas_ref: v0.3.33
+            target_args: TARGET=ARMV8
+
+          # ARM64 OpenBLAS focused sweep, LLVM fixed at 22
+          - label: arm64-llvm-22-openblas-v0.3.30
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
             openblas_ref: v0.3.30
+            target_args: TARGET=ARMV8
 
-          - label: after-ssyr2k-direct-sme1
-            openblas_ref: c040d5ed8
+          - label: arm64-llvm-22-openblas-before-issue5414
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
+            openblas_ref: "4cd575c20^1"
+            target_args: TARGET=ARMV8
 
-          - label: pr5596-parent
-            openblas_ref: "e5aebeaf9^"
-          - label: pr5596
-            openblas_ref: "e5aebeaf9"
-
-          - label: issue5503-parent
-            openblas_ref: "1ffea2b8c^"
-          - label: issue5503
-            openblas_ref: "1ffea2b8c"
-
-          - label: issue5552-parent
-            openblas_ref: "05d7c1889^"
-          - label: issue5552
-            openblas_ref: "05d7c1889"
-
-          - label: issue5336-2-parent
-            openblas_ref: "e07bea17c^"
-          - label: issue5336-2
-            openblas_ref: "e07bea17c"
-
-          - label: issue5414-parent
-            openblas_ref: "4cd575c20^"
-          - label: issue5414
+          - label: arm64-llvm-22-openblas-issue5414
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
             openblas_ref: "4cd575c20"
+            target_args: TARGET=ARMV8
 
-          - label: release-merge-parent
-            openblas_ref: "0e7b11fbc^"
-          - label: release-merge
-            openblas_ref: "0e7b11fbc"
-
-          - label: v0.3.31-tag-parent
-            openblas_ref: "76f1be470^"
-          - label: v0.3.31-tag-commit
-            openblas_ref: "76f1be470"
-
-          - label: v0.3.31
+          - label: arm64-llvm-22-openblas-v0.3.31
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
             openblas_ref: v0.3.31
+            target_args: TARGET=ARMV8
 
-          - label: develop
+          - label: arm64-llvm-22-openblas-v0.3.32
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
+            openblas_ref: v0.3.32
+            target_args: TARGET=ARMV8
+
+          - label: arm64-llvm-22-openblas-v0.3.33
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
+            openblas_ref: v0.3.33
+            target_args: TARGET=ARMV8
+
+          - label: arm64-llvm-22-openblas-develop
+            runner: ubuntu-24.04-arm
+            miniforge_arch: Linux-aarch64
+            llvm_major: "22"
             openblas_ref: develop
+            target_args: TARGET=ARMV8
+
+          # x86_64 reference
+          - label: x86_64-llvm-22-openblas-v0.3.33
+            runner: ubuntu-24.04
+            miniforge_arch: Linux-x86_64
+            llvm_major: "22"
+            openblas_ref: v0.3.33
+            target_args: ""
 
     steps:
       - name: Check out reproducer repository
@@ -79,7 +126,7 @@ jobs:
           set -eux
 
           curl -L -o miniforge.sh \
-            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"
+            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${{ matrix.miniforge_arch }}.sh"
 
           bash miniforge.sh -b -p "$HOME/miniforge3"
 
@@ -95,9 +142,9 @@ jobs:
 
           conda create -n oblas-clang -c conda-forge \
             git make binutils \
-            "clang=22" \
-            "clangxx=22" \
-            "llvm-openmp=22"
+            "clang=${{ matrix.llvm_major }}" \
+            "clangxx=${{ matrix.llvm_major }}" \
+            "llvm-openmp=${{ matrix.llvm_major }}"
 
           conda activate oblas-clang
 
@@ -112,7 +159,7 @@ jobs:
           echo "=== libomp files ==="
           find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
 
-      - name: Build OpenBLAS candidate ref
+      - name: Build OpenBLAS ref
         run: |
           set -eux
 
@@ -123,25 +170,31 @@ jobs:
           export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
 
           OPENBLAS_REF="${{ matrix.openblas_ref }}"
-          OPENBLAS_DIR="OpenBLAS-candidate"
+          OPENBLAS_DIR="OpenBLAS-tested-ref"
 
           git clone https://github.com/OpenMathLib/OpenBLAS.git "$OPENBLAS_DIR"
           cd "$OPENBLAS_DIR"
 
-          git checkout --detach "$OPENBLAS_REF"
+          if [ "$OPENBLAS_REF" = "develop" ]; then
+            git checkout --detach origin/develop
+          else
+            git checkout --detach "$OPENBLAS_REF"
+          fi
 
           echo "=== tested OpenBLAS ref ==="
           git log -1 --oneline
           git status --short
 
+          EXTRA_TARGET_ARGS="${{ matrix.target_args }}"
+
           make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
             USE_OPENMP=1 \
             NO_AFFINITY=1 \
-            TARGET=ARMV8 \
             NUM_THREADS=128 \
             NO_LAPACK=1 \
-            NOFORTRAN=1
+            NOFORTRAN=1 \
+            $EXTRA_TARGET_ARGS
 
           LIB_CLANG_CLEAN="$(ls "$PWD"/libopenblas*.a | head -1)"
 
@@ -152,7 +205,7 @@ jobs:
 
           echo "=== OpenBLAS config strings in archive ==="
           strings "$LIB_CLANG_CLEAN" \
-            | grep -E 'OpenBLAS|USE_OPENMP|ARMV8' \
+            | grep -E 'OpenBLAS|USE_OPENMP|ARMV8|ZEN' \
             | head -50 || true
 
           echo "=== OpenMP symbols in OpenBLAS archive ==="
@@ -226,7 +279,7 @@ jobs:
 
           export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 
-          for i in $(seq 1 20); do
+          for i in $(seq 1 10); do
             echo "=== attempt $i: default geometry, calls=1000 ==="
             OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
           done
