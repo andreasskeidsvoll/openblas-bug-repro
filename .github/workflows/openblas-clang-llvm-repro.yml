@@ -1,4 +1,4 @@
-name: OpenBLAS clang/LLVM OpenMP repro
+name: OpenBLAS ARM64 LLVM OpenMP version sweep
 
 on:
   workflow_dispatch:
@@ -6,23 +6,14 @@ on:
     branches: [ main ]
 
 jobs:
-  clang-llvm-openmp:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+  arm64-llvm-openmp-sweep:
+    name: linux-arm64-llvm-${{ matrix.llvm_major }}
+    runs-on: ubuntu-24.04-arm
 
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: linux-arm64
-            runner: ubuntu-24.04-arm
-            miniforge_arch: Linux-aarch64
-            target_args: TARGET=ARMV8
-
-          - name: linux-x86_64
-            runner: ubuntu-24.04
-            miniforge_arch: Linux-x86_64
-            target_args: ""
+        llvm_major: ["18", "19", "20", "21", "22"]
 
     steps:
       - name: Check out repository
@@ -41,7 +32,7 @@ jobs:
           set -eux
 
           curl -L -o miniforge.sh \
-            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${{ matrix.miniforge_arch }}.sh"
+            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"
 
           bash miniforge.sh -b -p "$HOME/miniforge3"
 
@@ -56,7 +47,10 @@ jobs:
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
 
           conda create -n oblas-clang -c conda-forge \
-            git make clang clangxx llvm-openmp binutils
+            git make binutils \
+            "clang=${{ matrix.llvm_major }}" \
+            "clangxx=${{ matrix.llvm_major }}" \
+            "llvm-openmp=${{ matrix.llvm_major }}"
 
           conda activate oblas-clang
 
@@ -67,7 +61,7 @@ jobs:
 
           conda list | grep -E 'llvm-openmp|openmp|clang|binutils' || true
 
-      - name: Build clean OpenBLAS with clang/LLVM OpenMP
+      - name: Build clean OpenBLAS v0.3.33 with clang/LLVM OpenMP
         run: |
           set -eux
 
@@ -83,12 +77,17 @@ jobs:
             CC="$CONDA_PREFIX/bin/clang" \
             USE_OPENMP=1 \
             NO_AFFINITY=1 \
+            TARGET=ARMV8 \
             NUM_THREADS=128 \
             NO_LAPACK=1 \
-            NOFORTRAN=1 \
-            ${{ matrix.target_args }}
+            NOFORTRAN=1
 
           make PREFIX="$PWD/install-openmp-clang-clean" install
+
+          echo "=== OpenBLAS config strings in archive ==="
+          strings "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+            | grep -E 'OpenBLAS|USE_OPENMP|ARMV8' \
+            | head -50 || true
 
           echo "=== OpenMP symbols in OpenBLAS archive ==="
           nm -u "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
