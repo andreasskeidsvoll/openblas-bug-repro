@@ -1,4 +1,4 @@
-name: OpenBLAS ARM64 candidate ref sweep
+name: OpenBLAS ARM64 late candidate ref sweep
 
 on:
   workflow_dispatch:
@@ -6,10 +6,10 @@ on:
     branches: [ main ]
 
 jobs:
-  arm64-openblas-candidate-ref-sweep:
+  arm64-openblas-late-candidate-ref-sweep:
     name: arm64-openblas-${{ matrix.label }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     strategy:
       fail-fast: false
@@ -18,41 +18,43 @@ jobs:
           - label: v0.3.30
             openblas_ref: v0.3.30
 
-          - label: revert-5251-parent
-            openblas_ref: "4062c1037^"
+          - label: after-ssyr2k-direct-sme1
+            openblas_ref: c040d5ed8
 
-          - label: revert-5251
-            openblas_ref: "4062c1037"
+          - label: pr5596-parent
+            openblas_ref: "e5aebeaf9^"
+          - label: pr5596
+            openblas_ref: "e5aebeaf9"
 
-          - label: a64fx-gemm-divide-rate-parent
-            openblas_ref: "a06bcf836^"
+          - label: issue5503-parent
+            openblas_ref: "1ffea2b8c^"
+          - label: issue5503
+            openblas_ref: "1ffea2b8c"
 
-          - label: a64fx-gemm-divide-rate
-            openblas_ref: "a06bcf836"
+          - label: issue5552-parent
+            openblas_ref: "05d7c1889^"
+          - label: issue5552
+            openblas_ref: "05d7c1889"
 
-          - label: neoversev1-gemm-divide-rate-parent
-            openblas_ref: "d23680b81^"
+          - label: issue5336-2-parent
+            openblas_ref: "e07bea17c^"
+          - label: issue5336-2
+            openblas_ref: "e07bea17c"
 
-          - label: neoversev1-gemm-divide-rate
-            openblas_ref: "d23680b81"
+          - label: issue5414-parent
+            openblas_ref: "4cd575c20^"
+          - label: issue5414
+            openblas_ref: "4cd575c20"
 
-          - label: a64fx-gemm-default-pqr-parent
-            openblas_ref: "52ec7faf3^"
+          - label: release-merge-parent
+            openblas_ref: "0e7b11fbc^"
+          - label: release-merge
+            openblas_ref: "0e7b11fbc"
 
-          - label: a64fx-gemm-default-pqr
-            openblas_ref: "52ec7faf3"
-
-          - label: yielding-parent
-            openblas_ref: "0ff51a40f^"
-
-          - label: yielding
-            openblas_ref: "0ff51a40f"
-
-          - label: ssyr2k-direct-sme1-parent
-            openblas_ref: "c040d5ed8^"
-
-          - label: ssyr2k-direct-sme1
-            openblas_ref: "c040d5ed8"
+          - label: v0.3.31-tag-parent
+            openblas_ref: "76f1be470^"
+          - label: v0.3.31-tag-commit
+            openblas_ref: "76f1be470"
 
           - label: v0.3.31
             openblas_ref: v0.3.31
@@ -224,7 +226,7 @@ jobs:
 
           export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 
-          for i in $(seq 1 10); do
+          for i in $(seq 1 20); do
             echo "=== attempt $i: default geometry, calls=1000 ==="
             OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
           done
