@@ -1,4 +1,4 @@
-name: OpenBLAS clang/LLVM OpenMP sweeps
+name: OpenBLAS ARM64 candidate ref sweep
 
 on:
   workflow_dispatch:
@@ -6,197 +6,62 @@ on:
     branches: [ main ]
 
 jobs:
-  arm64-llvm-openmp-sweep:
-    name: arm64-llvm-${{ matrix.llvm_major }}
+  arm64-openblas-candidate-ref-sweep:
+    name: arm64-openblas-${{ matrix.label }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
     strategy:
       fail-fast: false
       matrix:
-        llvm_major: ["18", "19", "20", "21", "22"]
+        include:
+          - label: v0.3.30
+            openblas_ref: v0.3.30
+
+          - label: revert-5251-parent
+            openblas_ref: "4062c1037^"
+
+          - label: revert-5251
+            openblas_ref: "4062c1037"
+
+          - label: a64fx-gemm-divide-rate-parent
+            openblas_ref: "a06bcf836^"
+
+          - label: a64fx-gemm-divide-rate
+            openblas_ref: "a06bcf836"
+
+          - label: neoversev1-gemm-divide-rate-parent
+            openblas_ref: "d23680b81^"
+
+          - label: neoversev1-gemm-divide-rate
+            openblas_ref: "d23680b81"
+
+          - label: a64fx-gemm-default-pqr-parent
+            openblas_ref: "52ec7faf3^"
+
+          - label: a64fx-gemm-default-pqr
+            openblas_ref: "52ec7faf3"
+
+          - label: yielding-parent
+            openblas_ref: "0ff51a40f^"
+
+          - label: yielding
+            openblas_ref: "0ff51a40f"
+
+          - label: ssyr2k-direct-sme1-parent
+            openblas_ref: "c040d5ed8^"
+
+          - label: ssyr2k-direct-sme1
+            openblas_ref: "c040d5ed8"
+
+          - label: v0.3.31
+            openblas_ref: v0.3.31
+
+          - label: develop
+            openblas_ref: develop
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Show machine info
-        run: |
-          set -eux
-          uname -a
-          uname -m
-          lscpu
-          nproc
-
-      - name: Install Miniforge
-        run: |
-          set -eux
-
-          curl -L -o miniforge.sh \
-            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"
-
-          bash miniforge.sh -b -p "$HOME/miniforge3"
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda config --set always_yes yes
-          conda config --set channel_priority strict
-
-      - name: Create clang/LLVM OpenMP environment
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-
-          conda create -n oblas-clang -c conda-forge \
-            git make binutils \
-            "clang=${{ matrix.llvm_major }}" \
-            "clangxx=${{ matrix.llvm_major }}" \
-            "llvm-openmp=${{ matrix.llvm_major }}"
-
-          conda activate oblas-clang
-
-          which clang
-          which clang++
-          clang --version
-          clang++ --version
-
-          echo "CONDA_PREFIX=$CONDA_PREFIX"
-          conda list | grep -E 'llvm-openmp|openmp|clang|binutils' || true
-
-          echo "=== libomp files ==="
-          find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
-
-      - name: Build OpenBLAS v0.3.33 libraries with clang/LLVM OpenMP
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-          export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          git clone --branch v0.3.33 --depth 1 \
-            https://github.com/OpenMathLib/OpenBLAS.git OpenBLAS-0.3.33-clang
-
-          cd OpenBLAS-0.3.33-clang
-
-          make -j"$(nproc)" libs \
-            CC="$CONDA_PREFIX/bin/clang" \
-            USE_OPENMP=1 \
-            NO_AFFINITY=1 \
-            TARGET=ARMV8 \
-            NUM_THREADS=128 \
-            NO_LAPACK=1 \
-            NOFORTRAN=1
-
-          LIB_CLANG_CLEAN="$(ls "$PWD"/libopenblas*.a | head -1)"
-
-          echo "OPENBLAS_DIR=$PWD" >> "$GITHUB_ENV"
-          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN" >> "$GITHUB_ENV"
-
-          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN"
-
-          echo "=== OpenBLAS config strings in archive ==="
-          strings "$LIB_CLANG_CLEAN" \
-            | grep -E 'OpenBLAS|USE_OPENMP|ARMV8' \
-            | head -50 || true
-
-          echo "=== OpenMP symbols in OpenBLAS archive ==="
-          nm -u "$LIB_CLANG_CLEAN" \
-            | grep -E 'GOMP|__kmpc|omp_' \
-            | sort -u \
-            | head -100 || true
-
-      - name: Compile reproducer
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-          export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          clang -O2 -Wall -Wextra \
-            "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
-            "$LIB_CLANG_CLEAN" \
-            -L"$CONDA_PREFIX/lib" \
-            -Wl,-rpath,"$CONDA_PREFIX/lib" \
-            -lomp -lpthread -lm -ldl \
-            -o repro_clang_llvm_omp
-
-      - name: Check linkage and symbols
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
-          echo "=== ldd ==="
-          ldd ./repro_clang_llvm_omp || true
-
-          echo "=== OpenMP-related undefined symbols in final executable ==="
-          nm -u ./repro_clang_llvm_omp \
-            | grep -E 'GOMP|__kmpc|omp_' \
-            | sort -u || true
-
-      - name: Run positive controls
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
-          echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1, calls=1000 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1 32 32 64 64 128 1000
-
-          echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex, calls=1000 ==="
-          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
-
-          echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32, calls=1000 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 31 32 64 64 128 1000
-
-          echo "=== DGEMM below threshold control: K=127, calls=1000 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 1000
-
-      - name: Run threaded no-mutex correctness stress test
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
-          for i in $(seq 1 10); do
-            echo "=== attempt $i: default geometry, calls=1000 ==="
-            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
-          done
-
-  arm64-openblas-version-sweep:
-    name: arm64-openblas-${{ matrix.openblas_ref }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
-
-    strategy:
-      fail-fast: false
-      matrix:
-        openblas_ref:
-          - v0.3.28
-          - v0.3.29
-          - v0.3.30
-          - v0.3.31
-          - v0.3.32
-          - v0.3.33
-          - develop
-
-    steps:
-      - name: Check out repository
+      - name: Check out reproducer repository
         uses: actions/checkout@v4
 
       - name: Show machine info
@@ -245,7 +110,7 @@ jobs:
           echo "=== libomp files ==="
           find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
 
-      - name: Build OpenBLAS ${{ matrix.openblas_ref }} libraries with clang/LLVM OpenMP
+      - name: Build OpenBLAS candidate ref
         run: |
           set -eux
 
@@ -256,17 +121,16 @@ jobs:
           export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
 
           OPENBLAS_REF="${{ matrix.openblas_ref }}"
-          OPENBLAS_DIR="OpenBLAS-${OPENBLAS_REF}-clang"
+          OPENBLAS_DIR="OpenBLAS-candidate"
 
-          if [ "$OPENBLAS_REF" = "develop" ]; then
-            git clone --depth 1 \
-              https://github.com/OpenMathLib/OpenBLAS.git "$OPENBLAS_DIR"
-          else
-            git clone --branch "$OPENBLAS_REF" --depth 1 \
-              https://github.com/OpenMathLib/OpenBLAS.git "$OPENBLAS_DIR"
-          fi
-
+          git clone https://github.com/OpenMathLib/OpenBLAS.git "$OPENBLAS_DIR"
           cd "$OPENBLAS_DIR"
+
+          git checkout --detach "$OPENBLAS_REF"
+
+          echo "=== tested OpenBLAS ref ==="
+          git log -1 --oneline
+          git status --short
 
           make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
@@ -287,172 +151,6 @@ jobs:
           echo "=== OpenBLAS config strings in archive ==="
           strings "$LIB_CLANG_CLEAN" \
             | grep -E 'OpenBLAS|USE_OPENMP|ARMV8' \
-            | head -50 || true
-
-          echo "=== OpenMP symbols in OpenBLAS archive ==="
-          nm -u "$LIB_CLANG_CLEAN" \
-            | grep -E 'GOMP|__kmpc|omp_' \
-            | sort -u \
-            | head -100 || true
-
-      - name: Compile reproducer
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-          export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          clang -O2 -Wall -Wextra \
-            "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
-            "$LIB_CLANG_CLEAN" \
-            -L"$CONDA_PREFIX/lib" \
-            -Wl,-rpath,"$CONDA_PREFIX/lib" \
-            -lomp -lpthread -lm -ldl \
-            -o repro_clang_llvm_omp
-
-      - name: Check linkage and symbols
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
-          echo "=== ldd ==="
-          ldd ./repro_clang_llvm_omp || true
-
-          echo "=== OpenMP-related undefined symbols in final executable ==="
-          nm -u ./repro_clang_llvm_omp \
-            | grep -E 'GOMP|__kmpc|omp_' \
-            | sort -u || true
-
-      - name: Run positive controls
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
-          echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1, calls=1000 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1 32 32 64 64 128 1000
-
-          echo "=== single-thread control: OMP_NUM_THREADS=1, no mutex, calls=1000 ==="
-          OMP_NUM_THREADS=1 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
-
-          echo "=== DSYR2K below threshold control: syr_n=31, syr_k=32, calls=1000 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 31 32 64 64 128 1000
-
-          echo "=== DGEMM below threshold control: K=127, calls=1000 ==="
-          OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 127 1000
-
-      - name: Run threaded no-mutex correctness stress test
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
-          for i in $(seq 1 10); do
-            echo "=== attempt $i: default geometry, calls=1000 ==="
-            OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 0 32 32 64 64 128 1000
-          done
-
-  x86_64-reference:
-    name: x86_64-reference-openblas-v0.3.33-llvm-22
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Show machine info
-        run: |
-          set -eux
-          uname -a
-          uname -m
-          lscpu
-          nproc
-
-      - name: Install Miniforge
-        run: |
-          set -eux
-
-          curl -L -o miniforge.sh \
-            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
-
-          bash miniforge.sh -b -p "$HOME/miniforge3"
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda config --set always_yes yes
-          conda config --set channel_priority strict
-
-      - name: Create clang/LLVM OpenMP environment
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-
-          conda create -n oblas-clang -c conda-forge \
-            git make binutils \
-            "clang=22" \
-            "clangxx=22" \
-            "llvm-openmp=22"
-
-          conda activate oblas-clang
-
-          which clang
-          which clang++
-          clang --version
-          clang++ --version
-
-          echo "CONDA_PREFIX=$CONDA_PREFIX"
-          conda list | grep -E 'llvm-openmp|openmp|clang|binutils' || true
-
-          echo "=== libomp files ==="
-          find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
-
-      - name: Build OpenBLAS v0.3.33 libraries with clang/LLVM OpenMP
-        run: |
-          set -eux
-
-          source "$HOME/miniforge3/etc/profile.d/conda.sh"
-          conda activate oblas-clang
-
-          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-          export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          git clone --branch v0.3.33 --depth 1 \
-            https://github.com/OpenMathLib/OpenBLAS.git OpenBLAS-0.3.33-clang
-
-          cd OpenBLAS-0.3.33-clang
-
-          make -j"$(nproc)" libs \
-            CC="$CONDA_PREFIX/bin/clang" \
-            USE_OPENMP=1 \
-            NO_AFFINITY=1 \
-            NUM_THREADS=128 \
-            NO_LAPACK=1 \
-            NOFORTRAN=1
-
-          LIB_CLANG_CLEAN="$(ls "$PWD"/libopenblas*.a | head -1)"
-
-          echo "OPENBLAS_DIR=$PWD" >> "$GITHUB_ENV"
-          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN" >> "$GITHUB_ENV"
-
-          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN"
-
-          echo "=== OpenBLAS config strings in archive ==="
-          strings "$LIB_CLANG_CLEAN" \
-            | grep -E 'OpenBLAS|USE_OPENMP' \
             | head -50 || true
 
           echo "=== OpenMP symbols in OpenBLAS archive ==="
