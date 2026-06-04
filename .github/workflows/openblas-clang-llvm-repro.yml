@@ -59,7 +59,11 @@ jobs:
           clang --version
           clang++ --version
 
+          echo "CONDA_PREFIX=$CONDA_PREFIX"
           conda list | grep -E 'llvm-openmp|openmp|clang|binutils' || true
+
+          echo "=== libomp files ==="
+          find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
 
       - name: Build clean OpenBLAS v0.3.33 with clang/LLVM OpenMP
         run: |
@@ -67,6 +71,9 @@ jobs:
 
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
           conda activate oblas-clang
+
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
 
           git clone --branch v0.3.33 --depth 1 \
             https://github.com/OpenMathLib/OpenBLAS.git OpenBLAS-0.3.33-clang
@@ -102,6 +109,9 @@ jobs:
           source "$HOME/miniforge3/etc/profile.d/conda.sh"
           conda activate oblas-clang
 
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
+
           LIB_CLANG_CLEAN="$GITHUB_WORKSPACE/OpenBLAS-0.3.33-clang/install-openmp-clang-clean/lib/libopenblas.a"
 
           clang -O2 -Wall -Wextra \
@@ -116,6 +126,11 @@ jobs:
         run: |
           set -eux
 
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate oblas-clang
+
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+
           echo "=== ldd ==="
           ldd ./repro_clang_llvm_omp || true
 
@@ -127,6 +142,11 @@ jobs:
       - name: Run positive controls
         run: |
           set -eux
+
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate oblas-clang
+
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 
           echo "=== mutex control: OMP_NUM_THREADS=8, use_mutex=1, calls=1000 ==="
           OMP_NUM_THREADS=8 ./repro_clang_llvm_omp 1 32 32 64 64 128 1000
@@ -143,6 +163,11 @@ jobs:
       - name: Run threaded no-mutex correctness stress test
         run: |
           set -eux
+
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate oblas-clang
+
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 
           for i in $(seq 1 10); do
             echo "=== attempt $i: default geometry, calls=1000 ==="
