@@ -66,7 +66,7 @@ jobs:
           echo "=== libomp files ==="
           find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
 
-      - name: Build clean OpenBLAS v0.3.33 with clang/LLVM OpenMP
+      - name: Build OpenBLAS v0.3.33 libraries with clang/LLVM OpenMP
         run: |
           set -eux
 
@@ -81,7 +81,7 @@ jobs:
 
           cd OpenBLAS-0.3.33-clang
 
-          make -j"$(nproc)" \
+          make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
             USE_OPENMP=1 \
             NO_AFFINITY=1 \
@@ -90,15 +90,20 @@ jobs:
             NO_LAPACK=1 \
             NOFORTRAN=1
 
-          make PREFIX="$PWD/install-openmp-clang-clean" install
+          LIB_CLANG_CLEAN="$(ls "$PWD"/libopenblas*.a | head -1)"
+
+          echo "OPENBLAS_DIR=$PWD" >> "$GITHUB_ENV"
+          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN" >> "$GITHUB_ENV"
+
+          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN"
 
           echo "=== OpenBLAS config strings in archive ==="
-          strings "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+          strings "$LIB_CLANG_CLEAN" \
             | grep -E 'OpenBLAS|USE_OPENMP|ARMV8' \
             | head -50 || true
 
           echo "=== OpenMP symbols in OpenBLAS archive ==="
-          nm -u "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+          nm -u "$LIB_CLANG_CLEAN" \
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u \
             | head -100 || true
@@ -112,8 +117,6 @@ jobs:
 
           export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          LIB_CLANG_CLEAN="$GITHUB_WORKSPACE/OpenBLAS-0.3.33-clang/install-openmp-clang-clean/lib/libopenblas.a"
 
           clang -O2 -Wall -Wextra \
             "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
@@ -241,7 +244,7 @@ jobs:
           echo "=== libomp files ==="
           find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
 
-      - name: Build clean OpenBLAS ${{ matrix.openblas_ref }} with clang/LLVM OpenMP
+      - name: Build OpenBLAS ${{ matrix.openblas_ref }} libraries with clang/LLVM OpenMP
         run: |
           set -eux
 
@@ -264,7 +267,7 @@ jobs:
 
           cd "$OPENBLAS_DIR"
 
-          make -j"$(nproc)" \
+          make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
             USE_OPENMP=1 \
             NO_AFFINITY=1 \
@@ -273,17 +276,20 @@ jobs:
             NO_LAPACK=1 \
             NOFORTRAN=1
 
-          make PREFIX="$PWD/install-openmp-clang-clean" install
+          LIB_CLANG_CLEAN="$(ls "$PWD"/libopenblas*.a | head -1)"
 
           echo "OPENBLAS_DIR=$PWD" >> "$GITHUB_ENV"
+          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN" >> "$GITHUB_ENV"
+
+          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN"
 
           echo "=== OpenBLAS config strings in archive ==="
-          strings "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+          strings "$LIB_CLANG_CLEAN" \
             | grep -E 'OpenBLAS|USE_OPENMP|ARMV8' \
             | head -50 || true
 
           echo "=== OpenMP symbols in OpenBLAS archive ==="
-          nm -u "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+          nm -u "$LIB_CLANG_CLEAN" \
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u \
             | head -100 || true
@@ -297,8 +303,6 @@ jobs:
 
           export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          LIB_CLANG_CLEAN="$OPENBLAS_DIR/install-openmp-clang-clean/lib/libopenblas.a"
 
           clang -O2 -Wall -Wextra \
             "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
@@ -415,7 +419,7 @@ jobs:
           echo "=== libomp files ==="
           find "$CONDA_PREFIX/lib" -maxdepth 1 -name 'libomp*' -print || true
 
-      - name: Build clean OpenBLAS v0.3.33 with clang/LLVM OpenMP
+      - name: Build OpenBLAS v0.3.33 libraries with clang/LLVM OpenMP
         run: |
           set -eux
 
@@ -430,7 +434,7 @@ jobs:
 
           cd OpenBLAS-0.3.33-clang
 
-          make -j"$(nproc)" \
+          make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
             USE_OPENMP=1 \
             NO_AFFINITY=1 \
@@ -438,15 +442,20 @@ jobs:
             NO_LAPACK=1 \
             NOFORTRAN=1
 
-          make PREFIX="$PWD/install-openmp-clang-clean" install
+          LIB_CLANG_CLEAN="$(ls "$PWD"/libopenblas*.a | head -1)"
+
+          echo "OPENBLAS_DIR=$PWD" >> "$GITHUB_ENV"
+          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN" >> "$GITHUB_ENV"
+
+          echo "LIB_CLANG_CLEAN=$LIB_CLANG_CLEAN"
 
           echo "=== OpenBLAS config strings in archive ==="
-          strings "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+          strings "$LIB_CLANG_CLEAN" \
             | grep -E 'OpenBLAS|USE_OPENMP' \
             | head -50 || true
 
           echo "=== OpenMP symbols in OpenBLAS archive ==="
-          nm -u "$PWD/install-openmp-clang-clean/lib/libopenblas.a" \
+          nm -u "$LIB_CLANG_CLEAN" \
             | grep -E 'GOMP|__kmpc|omp_' \
             | sort -u \
             | head -100 || true
@@ -460,8 +469,6 @@ jobs:
 
           export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="$CONDA_PREFIX/lib:${LIBRARY_PATH:-}"
-
-          LIB_CLANG_CLEAN="$GITHUB_WORKSPACE/OpenBLAS-0.3.33-clang/install-openmp-clang-clean/lib/libopenblas.a"
 
           clang -O2 -Wall -Wextra \
             "$GITHUB_WORKSPACE/openblas_dsyr2k_dgemm_minimal_repro.c" \
