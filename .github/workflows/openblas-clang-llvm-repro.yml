@@ -187,10 +187,11 @@ jobs:
       fail-fast: false
       matrix:
         openblas_ref:
-          - v0.3.20
-          - v0.3.24
           - v0.3.28
+          - v0.3.29
+          - v0.3.30
           - v0.3.31
+          - v0.3.32
           - v0.3.33
           - develop
 
