@@ -82,6 +82,7 @@ jobs:
 
           echo "=== tested OpenBLAS ref ==="
           git log -1 --oneline
+          git status --short
 
           make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
@@ -186,25 +187,25 @@ jobs:
       matrix:
         include:
           - label: v0.3.30
-            openblas_ref: v0.3.30
+            openblas_ref: "v0.3.30"
 
-          - label: before-issue5414
-            openblas_ref: "4cd575c20^1"
+          - label: before-issue5414-e07bea17c
+            openblas_ref: "e07bea17c81c8774d41bb7f3f48f097e9948d4fe"
 
-          - label: issue5414
-            openblas_ref: "4cd575c20"
+          - label: issue5414-4cd575c20
+            openblas_ref: "4cd575c20f3ab52db04d96f4c978a60540cd9c31"
 
           - label: v0.3.31
-            openblas_ref: v0.3.31
+            openblas_ref: "v0.3.31"
 
           - label: v0.3.32
-            openblas_ref: v0.3.32
+            openblas_ref: "v0.3.32"
 
           - label: v0.3.33
-            openblas_ref: v0.3.33
+            openblas_ref: "v0.3.33"
 
           - label: develop
-            openblas_ref: develop
+            openblas_ref: "develop"
 
     steps:
       - name: Check out reproducer repository
@@ -445,6 +446,7 @@ jobs:
 
           echo "=== tested OpenBLAS ref ==="
           git log -1 --oneline
+          git status --short
 
           make -j"$(nproc)" libs \
             CC="$CONDA_PREFIX/bin/clang" \
